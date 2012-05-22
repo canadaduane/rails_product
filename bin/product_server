@@ -1,0 +1,125 @@
+#!/opt/local/bin/ruby
+
+require 'webrick'
+require 'optparse'
+
+OPTIONS = {
+  :port        => 3000,
+  :ip          => "0.0.0.0",
+  :environment => "development",
+  :server_root => File.expand_path(File.dirname(__FILE__) + "/../public/"),
+  :server_type => WEBrick::SimpleServer,
+  :site        => nil
+}
+
+ARGV.options do |opts|
+  script_name = File.basename($0)
+  opts.banner = "Usage: ruby #{script_name} [options]"
+
+  opts.separator ""
+
+  opts.on("-s", "--site=name", String,
+          "Specifies the site that this server will run.",
+          "Default: none (required)") { |OPTIONS[:site]| }
+  opts.on("-p", "--port=port", Integer,
+          "Runs Rails on the specified port.",
+          "Default: 3000") { |OPTIONS[:port]| }
+  opts.on("-b", "--binding=ip", String,
+          "Binds Rails to the specified ip.",
+          "Default: 0.0.0.0") { |OPTIONS[:ip]| }
+  opts.on("-e", "--environment=name", String,
+          "Specifies the environment to run this server under (test/development/production).",
+          "Default: development") { |OPTIONS[:environment]| }
+  opts.on("-d", "--daemon",
+          "Make Rails run as a Daemon (only works if fork is available -- meaning on *nix)."
+          ) { OPTIONS[:server_type] = WEBrick::Daemon }
+
+  opts.separator ""
+
+  opts.on("-h", "--help",
+          "Show this help message.") { puts opts; exit }
+
+  opts.parse!
+end
+
+ENV["SITE"] = OPTIONS[:site] if OPTIONS[:site]
+ENV["RAILS_ENV"] = OPTIONS[:environment]
+require File.dirname(__FILE__) + "/../config/environment"
+if not defined? SITE or SITE.nil? or SITE.empty?
+  puts "=> The SITE environment variable was not set."
+  site_dir = Dir.new(File.join(RAILS_ROOT, 'sites'))
+  sites = []
+  site_dir.each do |d|
+    sites << d if File.directory?(File.join(RAILS_ROOT, 'sites', d)) and d != "." and d != ".."
+  end
+  if sites.size > 0
+    puts "  According to your sites/ folder, you can set SITE to one of the following:"
+    sites.each { |d| puts "   - #{d}" }
+    puts "  So, for example you could start the server with:"
+    puts "     './script/server -s #{sites.first}'"
+  else
+    puts "  It appears that you do not yet have any sites to choose from.  You will need"
+    puts "  at least one site in your sites/ folder.  The best way to start is to use the"
+    puts "  site generator (http://wiki.rubyonrails.com/rails/show/AvailableGenerators)."
+    puts
+    puts "   e.g."
+    puts "      ./script/generate site super_value_cart"
+    puts
+    puts "  Then start the server with something like"
+    puts "     './script/server -s super_value_cart'"
+  end
+  puts "=> Shutting down."
+  exit
+end
+
+require 'webrick_server'
+
+class DispatchServlet < WEBrick::HTTPServlet::AbstractServlet
+  def handle_file(req, res)
+    begin
+      req = req.dup
+      path = req.path.dup
+
+      # Add .html if the last path piece has no . in it
+      path << '.html' if path != '/' && (%r{(^|/)[^./]+$} =~ path) 
+      path.gsub!('+', ' ') # Unescape + since FileHandler doesn't do so.
+
+      req.instance_variable_set(:@path_info, path) # Set the modified path...
+
+      # Dynamically switch the Servlet's root (public) folder on a per-request
+      # basis depending on whether or not the requested file exists in the
+      # site's public folder or the base public folder.
+      base_public = File.join(ABSOLUTE_RAILS_ROOT, 'public')
+      site_public = File.expand_path(File.join(ABSOLUTE_RAILS_ROOT, SITE_ROOT, 'public'))
+      if File.exist? File.join(site_public, path)
+        # The file was found to exist in the site-specific folder, so go there:
+        root = site_public
+      else
+        # Revert to the application base whether or not the file exists here.
+        # A "file not found" (or 404) message will occur if the file is also not 
+        # found in the RAILS_ROOT/public folder.
+        root = base_public
+      end
+
+      @file_handler.instance_variable_set(:@root, root) # Set the modified root...
+
+      @file_handler.send(:service, req, res)
+      return true
+    rescue HTTPStatus::PartialContent, HTTPStatus::NotModified => err
+      res.set_error(err)
+      return true
+    rescue => err
+      return false
+    end
+  end
+end
+
+OPTIONS['working_directory'] = File.expand_path(RAILS_ROOT)
+
+puts "=> Productized Rails Application started on http://#{OPTIONS[:ip]}:#{OPTIONS[:port]}"
+puts "   Please visit http://inquirylabs.com/productize/ for help related to the"
+puts "   productized version of rails.  [Author: duane.johnson@gmail.com]"
+puts
+puts "=> Operating for the following site: '#{SITE}'"
+puts "=> Ctrl-C to shutdown server; call with --help for options" if OPTIONS[:server_type] == WEBrick::SimpleServer
+DispatchServlet.dispatch(OPTIONS)

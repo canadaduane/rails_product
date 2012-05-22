@@ -1,0 +1,16 @@
+Description:
+    The 'rails_product' command creates a new Productized Rails Application
+    with a default directory structure and configuration at the path you
+    specify.
+
+Example:
+    rails_product ~/Code/Ruby/cart
+
+    This generates a skeletal Productized Rails installation in
+      ~/Code/Ruby/cart
+    
+    See the README in the newly created application to get going.
+
+On-line Documentation:
+    http://inquirylabs.com/productize/ or
+    http://wiki.rubyonrails.com/rails/show/HowToProductizeYourApplication

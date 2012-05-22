@@ -1,0 +1,2 @@
+- 2005-08-09: (Benjamin Curtis) If the base application layouts/application.rhtml file doesn't exist, then the view rendering code will not check for a second-tier layouts/application.rhtml.
+

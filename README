@@ -1,0 +1,195 @@
+== Welcome to the Productized Rails Application generator
+Author: Duane Johnson (canadaduane)
+Email: duane.johnson@gmail.com
+Project Website: http://inquirylabs.com/productize/
+
+= What is a 'Productized Rails Application' ?
+
+At MyTechSupport, we often have clients who pay a few thousand dollars for
+a web site, but in order to make a profit, we need to re-sell our work to
+other companies with similar business needs. For example, we are currently
+working on an adoption site (Jul 2005). Adoption sites, in general, have
+some generic needs (e.g. a "Birth Mother" login and a "Waiting Family"
+login), but our client has some particular needs as well.
+
+Using the rails_product generator, you can create a single generic application which
+uses a separate database for each client. In addition, you will have a
+hierarchical application structure wherein add-ons and tweaks for specific
+customers are possible without affecting the core "generic" site code base
+(neither will you have to copy that code base for each application). In
+this way, you can maintain a core application code base that every client
+uses, while still providing flexibility for paid add-ons or site-specific
+needs.
+
+= Installation
+
+To install the rails_product generator, simply run:
+
+$ gem install rails_product
+
+(This assumes you have the prerequisites to Rails already installed, e.g.
+Ruby 1.8.2 2004-12-25 and the 'gem' shell command from rubyforge.org).
+
+Next, you'll want to make sure you have the site generator as well:
+
+$ gem install site_generator
+
+The site generator will create a hollow directory structure for each site
+that you add to your base application.
+
+So, now that you've got the gems installed, here's how you'd create your
+very first Rails product:
+
+$ cd ~/Projects
+$ rails_product shopping_cart
+    create  
+    create  app/apis
+      <snip>
+    create  sites
+    create  Rakefile
+    create  README
+    create  CHANGELOG
+    create  app/controllers/application.rb
+    create  app/helpers/application_helper.rb
+    create  test/test_helper.rb
+    create  config/database.yml
+    create  config/routes.rb
+    create  public/.htaccess
+    create  sites/Rakefile
+      <snip>
+$ cd shopping_cart
+$ ./script/generate site my_first_cart_client
+    create  sites/my_first_cart_client/app/controllers
+    create  sites/my_first_cart_client/app/helpers
+    create  sites/my_first_cart_client/app/models
+    create  sites/my_first_cart_client/app/views/layouts
+    create  sites/my_first_cart_client/db/migrate
+    create  sites/my_first_cart_client/log
+    create  sites/my_first_cart_client/public
+    create  sites/my_first_cart_client/config
+    create  sites/my_first_cart_client/test/fixtures
+    create  sites/my_first_cart_client/test/functional
+    create  sites/my_first_cart_client/test/unit
+    create  sites/my_first_cart_client/public/.htaccess
+    create  sites/my_first_cart_client/public/dispatch.fcgi
+    create  sites/my_first_cart_client/config/routes.rb
+$ ./script/server -s my_first_cart_client
+=> Productized Rails application started on http://0.0.0.0:3000
+...
+
+At this point, assuming your application is going to be using a
+database, you'll want to go make your first site's database.  Depending on
+how you do things, you'll want to make one, two, or possibly all three of
+these databases:
+  my_first_cart_client_dev
+  my_first_cart_client_test
+  my_first_cart_client
+
+The last database in that list is the production database.
+
+
+= How Does The Directory Structure Differ From a Regular Rails Application?
+
+The directory structure of the Generic application is just like a normal
+Rails application, with one additional directory: the "sites" directory. So
+it looks something like this:
+
+RAILS_ROOT/
+  app/
+    controllers/
+    helpers/
+    models/
+    views/
+  public/
+  sites/
+    best_ever_adoptions_co_inc/   # <-- Site #1
+      app/
+        controllers/
+        helpers/
+        models/
+        views/
+      config/
+      db/
+        migrate/
+      public/
+      test/
+        fixtures/
+        functional/
+        unit/
+    yet_another_adoption_co/    # <-- Site #2
+      app/
+        controllers/
+        helpers/
+        models/
+        views/
+      (etc.)
+
+Note that although the directory structure of each individual site is
+almost identical to a regular Rails application, you need not have ANY
+files in these directories.  In fact, you can omit any directory (except
+the SITE_ROOT, e.g. sites/best_ever_adoptions_co_inc/) if it does not
+contain files.  So how does it work?
+
+Well, if you put a file called, for example, welcome_controller.rb in
+RAILS_ROOT/app/controllers, then all of your sites will access that
+controller as normal UNLESS you put a file with the same name in the
+site-specific controllers folder. In that case, the RAILS_ROOT
+welcome_controller.rb will be loaded, and then the WelcomeController class
+will be reopened (yay for Ruby!) by the site-specific welcome_controller.rb
+(say, for example, in
+RAILS_ROOT/sites/yet_another_adoption_co/app/controllers/) and modified as
+needed. For example, you could override the "index" method to do a
+redirect, or you could add a before_filter to make the controller require a
+login.
+
+Views, layouts and partials act similarly--however, they simply override
+their generic counterparts. For example, if you have an index.rhtml and a
+_title.rhtml in RAILS_ROOT/app/views/welcome/ and supposing this
+index.rhtml has a <%= render :partial => "title" %> in its code, then the
+_title partial will be rendered in place. Now, however, let's say that we
+put a _title.rhtml file in
+RAILS_ROOT/sites/yet_another_adoption_co/app/views/welcome/. In that case,
+our generic index.rhtml will load the site-specific _title partial in
+place. Hierarchical customizations in a jiffy.
+
+= Implementation Details
+
+If you would like to understand how all of the pieces work together to
+accomplish this feat, read on.
+
+Here is what the rails_product generator will do:
+
+1. Create the RAILS_ROOT directory structure as usual, with the addition
+of a /sites folder.
+
+2. Create a productize.rb file in your application's lib/ folder (open it
+and read the comments to see what it does exactly.  This is where the core
+magic happens since we can re-open the Rails classes as necessary to allow
+for our productization approach.)
+
+3. Create a slightly modified environment.rb file in your config/ folder.
+The following three lines are different from the regular environment.rb:
+
+  a. SITE = ENV['SITE'] || ENV['site']
+     Sets a constant for the rest of the application so it can know where
+     to find your site's stuff.
+
+  b. require 'productize'
+     Modifies the core Rails classes as necessary to load both the base
+     application's code and the site-specific code.
+  
+  c. File.join(SITE_ROOT, 'app', 'controllers'),
+     Lets the Dependencies::LoadingModules class know where to find site-
+     specific controllers if the base controller doesn't exist.
+
+4. Create a modified database.yml file that will dynamically load the
+correct database when the server starts up.
+
+5. Create an 'apache' directory in your config/ folder with a sample Apache
+VirtualHost configuration file.  This sample file will show you what you'll
+need to do to get Apache to behave like WEBrick below (shares resources).
+
+6. Create a modified script/server file that will let your WEBrick server
+share the resources in your base application's public folder (e.g. images,
+javascripts etc.) without having to copy them to each site's individual
+public folder (Hurray for the DRY principle!) (DRY=Don't Repeat Yourself).
